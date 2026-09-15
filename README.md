@@ -2,6 +2,8 @@
 
 Dashboard KPI untuk manajemen/direksi RS Syifa Medika — Ringkasan Eksekutif (Balanced Scorecard), Operasional (BOR/LOS/BTO/TOI, Grafik Barber-Johnson), Efisiensi Layanan, Mutu & Keselamatan Pasien, Keuangan, SDM, Conversion Rate, Kamus Istilah, dan mode TV Kiosk tanpa login.
 
+<!-- deploy test: 2026-09-15 -->
+
 ## Menjalankan secara lokal
 
 ```bash
