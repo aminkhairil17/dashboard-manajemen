@@ -4,6 +4,10 @@ use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 
+// Route SSO (redirect/callback/logout) didaftarkan otomatis oleh package
+// syifa/keycloak-sso — lihat KeycloakSsoServiceProvider. Nama route:
+// keycloak-sso.redirect, keycloak-sso.callback, keycloak-sso.logout.
+
 Route::middleware('guest')->group(function () {
     Volt::route('register', 'pages.auth.register')
         ->name('register');

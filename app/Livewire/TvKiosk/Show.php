@@ -5,6 +5,7 @@ namespace App\Livewire\TvKiosk;
 use App\Contracts\HospitalDataRepository;
 use App\Models\TvDisplayToken;
 use App\Services\KpiCalculationService;
+use App\Support\CurrentCompany;
 use Carbon\CarbonImmutable;
 use Livewire\Component;
 
@@ -40,15 +41,22 @@ class Show extends Component
 
     public array $perluPerhatian = [];
 
-    public function mount(string $token, HospitalDataRepository $repo, KpiCalculationService $kpi): void
+    public function mount(string $token, CurrentCompany $currentCompany): void
     {
-        $record = TvDisplayToken::where('token', $token)->first();
+        $record = TvDisplayToken::with('company')->where('token', $token)->first();
 
-        if (! $record || ! $record->isActive()) {
+        if (! $record || ! $record->isActive() || ! $record->company) {
             $this->valid = false;
 
             return;
         }
+
+        // Company harus di-set sebelum HospitalDataRepository/KpiCalculationService
+        // pertama kali di-resolve dari container, supaya data yang dimuat sesuai
+        // company pemilik token TV ini (bukan company user yang sedang login).
+        $currentCompany->set($record->company);
+        $repo = app(HospitalDataRepository::class);
+        $kpi = app(KpiCalculationService::class);
 
         $record->update(['last_used_at' => now()]);
         $this->valid = true;

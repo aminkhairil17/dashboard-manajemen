@@ -3,6 +3,7 @@
 namespace App\Livewire\Dashboard;
 
 use App\Models\TvDisplayToken;
+use App\Support\CurrentCompany;
 use Illuminate\Support\Collection;
 use Livewire\Component;
 
@@ -12,14 +13,14 @@ class TvKioskManager extends Component
 
     public string $type = TvDisplayToken::TYPE_PUBLIK;
 
-    public function create(): void
+    public function create(CurrentCompany $currentCompany): void
     {
         $this->validate([
             'label' => 'required|string|max:80',
             'type' => 'required|in:'.TvDisplayToken::TYPE_PUBLIK.','.TvDisplayToken::TYPE_DIREKTUR,
         ]);
 
-        TvDisplayToken::generate($this->label, $this->type, auth()->id());
+        TvDisplayToken::generate($currentCompany->id(), $this->label, $this->type, auth()->id());
 
         $this->label = '';
         $this->type = TvDisplayToken::TYPE_PUBLIK;
@@ -34,9 +35,9 @@ class TvKioskManager extends Component
         session()->flash('status', 'Link TV "'.$token->label.'" sudah dicabut.');
     }
 
-    public function getTokensProperty(): Collection
+    public function getTokensProperty(CurrentCompany $currentCompany): Collection
     {
-        return TvDisplayToken::latest()->get();
+        return TvDisplayToken::where('company_id', $currentCompany->id())->latest()->get();
     }
 
     public function render()

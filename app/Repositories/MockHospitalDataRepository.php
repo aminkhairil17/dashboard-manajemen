@@ -3,37 +3,58 @@
 namespace App\Repositories;
 
 use App\Contracts\HospitalDataRepository;
+use App\Support\CurrentCompany;
 use Carbon\CarbonImmutable;
 
 /**
  * Data contoh yang realistis secara pola & volume untuk RS ukuran menengah
  * (±120 tempat tidur). Dipakai sampai akses SIMRS GOS RS Syifa Medika yang
  * sesungguhnya tersedia — lihat App\Contracts\HospitalDataRepository.
+ *
+ * Angka yang berhubungan langsung dengan kapasitas tempat tidur (BOR/LOS/
+ * BTO/TOI, ketersediaan kamar, pendapatan) diskalakan mengikuti bed_capacity
+ * company yang sedang aktif, supaya berpindah company di dashboard multi-RS
+ * benar-benar menampilkan angka yang berbeda. Indikator lain (mutu, SDM,
+ * konversi, dll — murni rasio/persentase) sengaja dibiarkan sama dulu.
  */
 class MockHospitalDataRepository implements HospitalDataRepository
 {
-    private const TOTAL_BEDS = 120;
+    private const DEFAULT_TOTAL_BEDS = 120;
 
     private const PATIENT_DAYS_PER_DAY = 88.33;
 
     private const DISCHARGES_PER_DAY = 21.0;
+
+    private readonly int $totalBeds;
+
+    private readonly float $scale;
+
+    private readonly int $seedOffset;
+
+    public function __construct(private CurrentCompany $currentCompany)
+    {
+        $company = $this->currentCompany->get();
+        $this->totalBeds = $company?->bed_capacity ?? self::DEFAULT_TOTAL_BEDS;
+        $this->scale = $this->totalBeds / self::DEFAULT_TOTAL_BEDS;
+        $this->seedOffset = $company?->id ?? 0;
+    }
 
     public function getBedCensus(CarbonImmutable $start, CarbonImmutable $end): array
     {
         $periodDays = max(1, $start->diffInDays($end) + 1);
 
         return [
-            'total_beds' => self::TOTAL_BEDS,
-            'patient_days' => round(self::PATIENT_DAYS_PER_DAY * $periodDays, 1),
-            'discharges' => (int) round(self::DISCHARGES_PER_DAY * $periodDays),
+            'total_beds' => $this->totalBeds,
+            'patient_days' => round(self::PATIENT_DAYS_PER_DAY * $this->scale * $periodDays, 1),
+            'discharges' => (int) round(self::DISCHARGES_PER_DAY * $this->scale * $periodDays),
             'period_days' => $periodDays,
         ];
     }
 
     public function getBorTrend(CarbonImmutable $end, int $days): array
     {
-        mt_srand(20260904);
-        $base = (self::PATIENT_DAYS_PER_DAY / self::TOTAL_BEDS) * 100;
+        mt_srand(20260904 + $this->seedOffset);
+        $base = (self::PATIENT_DAYS_PER_DAY / self::DEFAULT_TOTAL_BEDS) * 100;
         $trend = [];
 
         for ($i = $days - 1; $i >= 0; $i--) {
@@ -80,12 +101,13 @@ class MockHospitalDataRepository implements HospitalDataRepository
     }
 
     /**
-     * Posisi kamar saat ini (snapshot per jenis kelas) — total 120 tempat tidur,
-     * sama dengan TOTAL_BEDS yang dipakai rumus BOR/LOS/BTO/TOI.
+     * Posisi kamar saat ini (snapshot per jenis kelas), diskalakan dari
+     * proporsi dasar untuk RS 120 tempat tidur mengikuti bed_capacity company
+     * yang aktif — totalnya akan selalu sama dengan $this->totalBeds.
      */
     public function getRoomAvailability(): array
     {
-        return [
+        $base = [
             ['kelas' => 'VIP', 'total' => 10, 'terisi' => 6, 'kosong' => 3, 'perbaikan' => 1],
             ['kelas' => 'Kelas 1', 'total' => 20, 'terisi' => 15, 'kosong' => 4, 'perbaikan' => 1],
             ['kelas' => 'Kelas 2', 'total' => 30, 'terisi' => 23, 'kosong' => 7, 'perbaikan' => 0],
@@ -94,6 +116,28 @@ class MockHospitalDataRepository implements HospitalDataRepository
             ['kelas' => 'HCU', 'total' => 6, 'terisi' => 3, 'kosong' => 3, 'perbaikan' => 0],
             ['kelas' => 'Isolasi', 'total' => 4, 'terisi' => 0, 'kosong' => 4, 'perbaikan' => 0],
         ];
+
+        if ($this->scale === 1.0) {
+            return $base;
+        }
+
+        $scaled = array_map(function (array $row) {
+            $row['total'] = (int) round($row['total'] * $this->scale);
+            $row['perbaikan'] = min($row['total'], (int) round($row['perbaikan'] * $this->scale));
+            $row['terisi'] = min($row['total'] - $row['perbaikan'], (int) round($row['terisi'] * $this->scale));
+            $row['kosong'] = max(0, $row['total'] - $row['terisi'] - $row['perbaikan']);
+
+            return $row;
+        }, $base);
+
+        // Rapikan sisa pembulatan supaya total kelas persis sama dengan $this->totalBeds.
+        $diff = $this->totalBeds - array_sum(array_column($scaled, 'total'));
+        if ($diff !== 0) {
+            $scaled[array_key_last($scaled)]['total'] += $diff;
+            $scaled[array_key_last($scaled)]['kosong'] = max(0, $scaled[array_key_last($scaled)]['total'] - $scaled[array_key_last($scaled)]['terisi'] - $scaled[array_key_last($scaled)]['perbaikan']);
+        }
+
+        return $scaled;
     }
 
     public function getRawatJalanData(): array
@@ -188,17 +232,27 @@ class MockHospitalDataRepository implements HospitalDataRepository
 
     public function getKeuanganData(): array
     {
+        $rupiah = fn (float $miliar): string => 'Rp '.number_format($miliar, 2, ',', '.').' M';
+
+        $revenueByLine = [
+            ['label' => 'Rawat Inap', 'val' => 1.92],
+            ['label' => 'Rawat Jalan', 'val' => 1.14],
+            ['label' => 'Penunjang (Lab/Radiologi)', 'val' => 0.71],
+            ['label' => 'IGD', 'val' => 0.68],
+            ['label' => 'Farmasi', 'val' => 0.37],
+        ];
+
+        foreach ($revenueByLine as &$line) {
+            $line['val'] = round($line['val'] * $this->scale, 2);
+            $line['fmt'] = $rupiah($line['val']);
+        }
+        unset($line);
+
         return [
-            'pendapatan_bulan_berjalan' => 4.82,
-            'pendapatan_target' => 5.50,
+            'pendapatan_bulan_berjalan' => round(4.82 * $this->scale, 2),
+            'pendapatan_target' => round(5.50 * $this->scale, 2),
             'bopo' => 82.4,
-            'revenue_by_line' => [
-                ['label' => 'Rawat Inap', 'val' => 1.92, 'fmt' => 'Rp 1,92 M'],
-                ['label' => 'Rawat Jalan', 'val' => 1.14, 'fmt' => 'Rp 1,14 M'],
-                ['label' => 'Penunjang (Lab/Radiologi)', 'val' => 0.71, 'fmt' => 'Rp 0,71 M'],
-                ['label' => 'IGD', 'val' => 0.68, 'fmt' => 'Rp 0,68 M'],
-                ['label' => 'Farmasi', 'val' => 0.37, 'fmt' => 'Rp 0,37 M'],
-            ],
+            'revenue_by_line' => $revenueByLine,
             'piutang_aging' => [
                 ['label' => '0–30 hari', 'val' => 640, 'status' => 'good'],
                 ['label' => '31–60 hari', 'val' => 290, 'status' => 'good'],
@@ -314,9 +368,9 @@ class MockHospitalDataRepository implements HospitalDataRepository
 
     public function getRevenueTrend(int $days): array
     {
-        mt_srand(20260905);
+        mt_srand(20260905 + $this->seedOffset);
         // Rp 4,82 M bulan berjalan ÷ 30 hari ≈ rata-rata harian, dengan sedikit noise.
-        $dailyAvg = 4.82 / 30;
+        $dailyAvg = (4.82 * $this->scale) / 30;
         $trend = [];
 
         for ($i = 0; $i < $days; $i++) {

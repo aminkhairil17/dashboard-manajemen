@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Models\Company;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Volt\Volt;
@@ -57,6 +58,8 @@ class AuthenticationTest extends TestCase
     public function test_navigation_menu_can_be_rendered(): void
     {
         $user = User::factory()->create();
+        $company = Company::create(['name' => 'RS Contoh', 'slug' => 'rs-contoh']);
+        $user->companies()->attach($company, ['role' => 'manajemen']);
 
         $this->actingAs($user);
 

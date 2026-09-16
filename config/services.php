@@ -35,4 +35,7 @@ return [
         ],
     ],
 
+    // 'services.keycloak' diisi otomatis oleh syifa/keycloak-sso dari
+    // config/keycloak-sso.php — lihat KeycloakSsoServiceProvider::register().
+
 ];

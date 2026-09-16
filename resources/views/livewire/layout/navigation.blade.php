@@ -1,6 +1,8 @@
 <?php
 
 use App\Livewire\Actions\Logout;
+use App\Models\Company;
+use App\Support\CurrentCompany;
 use Livewire\Volt\Component;
 
 new class extends Component
@@ -10,6 +12,15 @@ new class extends Component
         $logout();
 
         $this->redirect('/', navigate: true);
+    }
+
+    public function switchCompany(int $companyId, CurrentCompany $currentCompany): void
+    {
+        $company = auth()->user()->companies()->findOrFail($companyId);
+
+        $currentCompany->set($company);
+
+        $this->redirect(route('dashboard'), navigate: true);
     }
 }; ?>
 
@@ -30,10 +41,13 @@ new class extends Component
         'Lainnya' => [
             ['route' => 'dashboard.glosarium', 'label' => 'Kamus Istilah', 'icon' => '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>'],
             ['route' => 'dashboard.tv-kiosk', 'label' => 'Link TV Kiosk', 'icon' => '<rect x="3" y="5" width="18" height="13" rx="2"/><path d="M8 21h8M12 18v3"/>'],
+            ['route' => 'dashboard.perusahaan', 'label' => 'Kelola Perusahaan', 'icon' => '<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/>'],
         ],
     ];
 
     $initials = collect(explode(' ', auth()->user()->name))->map(fn($n) => mb_substr($n, 0, 1))->take(2)->implode('');
+    $myCompanies = auth()->user()->companies;
+    $activeCompany = app(CurrentCompany::class)->get();
 @endphp
 
 <div style="display:contents">
@@ -43,8 +57,8 @@ new class extends Component
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
     <a href="{{ route('dashboard.ringkasan') }}" wire:navigate class="app-brand">
-        <img src="{{ asset('branding-logo.png') }}" alt="Logo RS Syifa Medika">
-        <span>Syifa Medika</span>
+        <img src="{{ asset('branding-logo.png') }}" alt="Logo {{ $activeCompany?->name ?? 'Syifa Medika' }}">
+        <span>{{ $activeCompany?->name ?? 'Syifa Medika' }}</span>
     </a>
     <div class="util-avatar">{{ $initials }}</div>
 </div>
@@ -56,10 +70,27 @@ new class extends Component
         <svg class="icon-expand" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
     </button>
     <a href="{{ route('dashboard.ringkasan') }}" wire:navigate class="app-brand">
-        <img src="{{ asset('branding-logo.png') }}" alt="Logo RS Syifa Medika">
-        <span>Syifa Medika<span class="app-brand-sub">Dashboard Manajemen</span></span>
+        <img src="{{ asset('branding-logo.png') }}" alt="Logo {{ $activeCompany?->name ?? 'Syifa Medika' }}">
+        <span>{{ $activeCompany?->name ?? 'Syifa Medika' }}<span class="app-brand-sub">Dashboard Manajemen</span></span>
     </a>
     <div class="ribbon-line"></div>
+
+    @if($myCompanies->count() > 1)
+        <div class="company-switcher" x-data="{ open: false }" style="position:relative; margin:0 14px 10px;">
+            <button type="button" @click="open = !open" style="display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; padding:8px 10px; border-radius:10px; border:1px solid var(--border); background:var(--surface-2); font-size:.8rem; color:var(--ink); cursor:pointer;">
+                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ $activeCompany?->name ?? 'Pilih perusahaan' }}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div x-show="open" @click.outside="open = false" x-cloak style="position:absolute; z-index:20; top:calc(100% + 4px); left:0; right:0; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:4px; box-shadow:0 8px 24px rgba(0,0,0,.12);">
+                @foreach($myCompanies as $company)
+                    <button type="button" wire:click="switchCompany({{ $company->id }})" @click="open = false"
+                        style="display:block; width:100%; text-align:left; padding:8px 10px; border-radius:8px; font-size:.82rem; background:{{ $activeCompany?->id === $company->id ? 'var(--surface-2)' : 'none' }}; color:var(--ink); border:none; cursor:pointer;">
+                        {{ $company->name }}
+                    </button>
+                @endforeach
+            </div>
+        </div>
+    @endif
 
     <nav class="app-sidebar-scroll">
         @foreach($sections as $sectionLabel => $items)
