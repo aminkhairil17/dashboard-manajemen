@@ -16,26 +16,30 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $direktur = User::factory()->create([
-            'name' => 'Direktur RS Syifa Medika',
-            'email' => 'direktur@syifamedika.id',
-            'role' => 'manajemen',
-            'password' => bcrypt('password'),
-        ]);
+        // firstOrCreate (bukan updateOrCreate) supaya seeder ini aman dijalankan
+        // ulang kapan pun tanpa crash "email sudah dipakai" atau bikin company
+        // dobel — dan tidak diam-diam me-reset password direktur yang sudah
+        // pernah diganti manual kalau seeder ini ke-trigger lagi di production.
+        $direktur = User::firstOrCreate(
+            ['email' => 'direktur@syifamedika.id'],
+            [
+                'name' => 'Direktur RS Syifa Medika',
+                'role' => 'manajemen',
+                'password' => bcrypt('password'),
+            ]
+        );
 
-        $syifaMedika = Company::create([
-            'name' => 'RS Syifa Medika',
-            'slug' => 'rs-syifa-medika',
-            'bed_capacity' => 120,
-        ]);
+        $syifaMedika = Company::firstOrCreate(
+            ['slug' => 'rs-syifa-medika'],
+            ['name' => 'RS Syifa Medika', 'bed_capacity' => 120]
+        );
 
-        $syifaCabang = Company::create([
-            'name' => 'RS Syifa Medika Cabang Denpasar',
-            'slug' => 'rs-syifa-medika-cabang-denpasar',
-            'bed_capacity' => 80,
-        ]);
+        $syifaCabang = Company::firstOrCreate(
+            ['slug' => 'rs-syifa-medika-cabang-denpasar'],
+            ['name' => 'RS Syifa Medika Cabang Denpasar', 'bed_capacity' => 80]
+        );
 
-        $direktur->companies()->attach([
+        $direktur->companies()->syncWithoutDetaching([
             $syifaMedika->id => ['role' => 'direktur'],
             $syifaCabang->id => ['role' => 'direktur'],
         ]);
